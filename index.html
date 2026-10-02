@@ -129,7 +129,7 @@
 </div>
 
 <div id="player-container">
-    <video id="video-player" playsinline webkit-playsinline loop muted></video>
+    <video id="video-player" playsinline webkit-playsinline loop muted autoplay></video>
 
     <!-- 空收藏提示 -->
     <div class="empty-fav" id="empty-fav">
@@ -161,13 +161,13 @@
     const emptyFav = document.getElementById('empty-fav');
 
     let currentTab = 'recommend';
-    let currentBlob = null;
     let currentUrl = '';
     let currentSourceIndex = 0;
     let videoHistory = [];
     let historyIndex = -1;
     let favorites = [];
     let favIndex = 0;
+    let loadRetryCount = 0;
 
     // 从本地存储加载收藏
     try {
@@ -213,44 +213,36 @@
         return url;
     }
 
-    // 2. 加载推荐视频
-    async function loadVideo() {
+    // 2. 加载推荐视频（直接用 video.src，绕过 CORS）
+    function loadVideo() {
         showToast("正在加载...");
 
-        video.pause();
-        video.src = "";
+        const sourceUrl = getNextSource();
+        const url = `${sourceUrl}?t=${new Date().getTime()}_${Math.random()}`;
+        currentUrl = url;
+
+        video.src = url;
         video.load();
-        if (currentBlob) URL.revokeObjectURL(currentBlob);
-        currentBlob = null;
 
-        try {
-            const sourceUrl = getNextSource();
-            const url = `${sourceUrl}?t=${new Date().getTime()}`;
-            currentUrl = url;
+        updateFavButton();
 
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('网络错误');
-
-            const blob = await response.blob();
-            currentBlob = blob;
-
-            const videoUrl = URL.createObjectURL(blob);
-            video.src = videoUrl;
-
-            updateFavButton();
-
+        video.onloadeddata = function() {
+            loadRetryCount = 0;
             video.play().catch(() => {
                 showToast("点击屏幕播放");
             });
+        };
 
-        } catch (err) {
+        video.onerror = function() {
             // 失败了自动试下一个源
-            if (currentSourceIndex !== 0) {
+            if (loadRetryCount < API_SOURCES.length - 1) {
+                loadRetryCount++;
                 loadVideo();
             } else {
-                showToast("加载失败");
+                loadRetryCount = 0;
+                showToast("加载失败，上滑重试");
             }
-        }
+        };
     }
 
     // 加载收藏视频
@@ -262,32 +254,23 @@
 
         showToast("正在加载...");
 
-        video.pause();
-        video.src = "";
-        video.load();
-        if (currentBlob) URL.revokeObjectURL(currentBlob);
-        currentBlob = null;
-
         const url = favorites[favIndex];
         currentUrl = url;
 
-        fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error();
-                return res.blob();
-            })
-            .then(blob => {
-                currentBlob = blob;
-                const videoUrl = URL.createObjectURL(blob);
-                video.src = videoUrl;
-                updateFavButton();
-                video.play().catch(() => {
-                    showToast("点击屏幕播放");
-                });
-            })
-            .catch(() => {
-                showToast("加载失败");
+        video.src = url;
+        video.load();
+
+        updateFavButton();
+
+        video.onloadeddata = function() {
+            video.play().catch(() => {
+                showToast("点击屏幕播放");
             });
+        };
+
+        video.onerror = function() {
+            showToast("加载失败");
+        };
     }
 
     // 3. 下一个视频 (上滑)
@@ -299,11 +282,9 @@
             return;
         }
 
-        if (currentBlob) {
-            historyIndex++;
-            videoHistory.push(currentBlob);
-            if (videoHistory.length > 10) { videoHistory.shift(); historyIndex--; }
-        }
+        historyIndex++;
+        videoHistory.push(currentUrl);
+        if (videoHistory.length > 20) { videoHistory.shift(); historyIndex--; }
         loadVideo();
     }
 
@@ -316,13 +297,12 @@
             return;
         }
 
-        if (historyIndex >= 0) {
-            const prevBlob = videoHistory[historyIndex];
+        if (historyIndex > 0) {
             historyIndex--;
-            if (currentBlob) URL.revokeObjectURL(currentBlob);
-            currentBlob = prevBlob;
-            video.src = URL.createObjectURL(prevBlob);
-            video.play();
+            const prevUrl = videoHistory[historyIndex];
+            currentUrl = prevUrl;
+            video.src = prevUrl;
+            video.load();
             updateFavButton();
             showToast("回到上一个");
         } else {
