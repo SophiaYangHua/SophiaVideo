@@ -58,6 +58,46 @@
 
         video { width: 100%; height: 100%; object-fit: cover; }
 
+        /* 中央播放按钮 */
+        .play-center {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70px; height: 70px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 30px;
+            z-index: 80;
+            cursor: pointer;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .play-center.show { opacity: 1; }
+
+        /* 加载动画 */
+        .loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px; height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            z-index: 60;
+            display: none;
+        }
+        .loading.show { display: block; }
+
+        @keyframes spin {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
         /* 右侧按钮 */
         .sidebar {
             position: absolute;
@@ -129,7 +169,13 @@
 </div>
 
 <div id="player-container">
-    <video id="video-player" playsinline webkit-playsinline loop muted autoplay></video>
+    <video id="video-player" playsinline webkit-playsinline loop preload="auto"></video>
+
+    <!-- 中央播放按钮 -->
+    <div class="play-center" id="play-center">▶</div>
+
+    <!-- 加载动画 -->
+    <div class="loading" id="loading"></div>
 
     <!-- 空收藏提示 -->
     <div class="empty-fav" id="empty-fav">
@@ -148,7 +194,7 @@
 </div>
 
 <script>
-    // 三个视频源，轮询使用防止卡顿
+    // 三个视频源，同时请求，哪个快用哪个（竞速加载）
     const API_SOURCES = [
         'https://www.cunshao.com/666666/api/pc.php',
         'https://www.cunshao.com/666666/api/web.php',
@@ -159,15 +205,17 @@
     const toast = document.getElementById('toast');
     const favBtn = document.getElementById('fav-btn');
     const emptyFav = document.getElementById('empty-fav');
+    const loading = document.getElementById('loading');
+    const playCenter = document.getElementById('play-center');
 
     let currentTab = 'recommend';
     let currentUrl = '';
-    let currentSourceIndex = 0;
     let videoHistory = [];
     let historyIndex = -1;
     let favorites = [];
     let favIndex = 0;
-    let loadRetryCount = 0;
+    let isLoading = false;
+    let hasStarted = false; // 是否已经开始播放过（用于处理静音策略）
 
     // 从本地存储加载收藏
     try {
@@ -195,6 +243,8 @@
                 video.pause();
                 video.src = '';
                 emptyFav.classList.add('show');
+                loading.classList.remove('show');
+                playCenter.classList.remove('show');
             } else {
                 emptyFav.classList.remove('show');
                 favIndex = Math.floor(Math.random() * favorites.length);
@@ -206,43 +256,72 @@
         }
     }
 
-    // 获取下一个 API 源
-    function getNextSource() {
-        const url = API_SOURCES[currentSourceIndex];
-        currentSourceIndex = (currentSourceIndex + 1) % API_SOURCES.length;
-        return url;
-    }
-
-    // 2. 加载推荐视频（直接用 video.src，绕过 CORS）
+    // 2. 加载推荐视频 —— 三源竞速，谁快用谁
     function loadVideo() {
-        showToast("正在加载...");
+        if (isLoading) return;
+        isLoading = true;
+        loading.classList.add('show');
+        playCenter.classList.remove('show');
 
-        const sourceUrl = getNextSource();
-        const url = `${sourceUrl}?t=${new Date().getTime()}_${Math.random()}`;
-        currentUrl = url;
+        const timestamp = new Date().getTime() + '_' + Math.random();
+        let settled = false;
+        let failedCount = 0;
 
-        video.src = url;
-        video.load();
+        // 三个源同时请求
+        API_SOURCES.forEach((source, idx) => {
+            const url = `${source}?t=${timestamp}`;
 
-        updateFavButton();
+            // 用一个临时 video 元素预加载测试
+            const testVideo = document.createElement('video');
+            testVideo.preload = 'auto';
+            testVideo.muted = true;
+            testVideo.src = url;
 
-        video.onloadeddata = function() {
-            loadRetryCount = 0;
-            video.play().catch(() => {
-                showToast("点击屏幕播放");
-            });
-        };
+            const onSuccess = () => {
+                if (settled) return;
+                settled = true;
+                isLoading = false;
+                currentUrl = url;
 
-        video.onerror = function() {
-            // 失败了自动试下一个源
-            if (loadRetryCount < API_SOURCES.length - 1) {
-                loadRetryCount++;
-                loadVideo();
-            } else {
-                loadRetryCount = 0;
-                showToast("加载失败，上滑重试");
-            }
-        };
+                video.src = url;
+                video.load();
+
+                updateFavButton();
+                loading.classList.remove('show');
+
+                // 尝试播放
+                const playPromise = video.play();
+                if (playPromise) {
+                    playPromise.then(() => {
+                        hasStarted = true;
+                    }).catch(() => {
+                        // 自动播放失败，显示播放按钮
+                        playCenter.classList.add('show');
+                    });
+                }
+            };
+
+            const onFail = () => {
+                failedCount++;
+                if (failedCount >= API_SOURCES.length && !settled) {
+                    settled = true;
+                    isLoading = false;
+                    loading.classList.remove('show');
+                    showToast("加载失败，上滑重试");
+                }
+            };
+
+            testVideo.addEventListener('loadeddata', onSuccess);
+            testVideo.addEventListener('error', onFail);
+
+            // 超时 8 秒
+            setTimeout(() => {
+                if (!settled) {
+                    testVideo.src = '';
+                    onFail();
+                }
+            }, 8000);
+        });
     }
 
     // 加载收藏视频
@@ -252,7 +331,8 @@
             return;
         }
 
-        showToast("正在加载...");
+        loading.classList.add('show');
+        playCenter.classList.remove('show');
 
         const url = favorites[favIndex];
         currentUrl = url;
@@ -263,12 +343,19 @@
         updateFavButton();
 
         video.onloadeddata = function() {
-            video.play().catch(() => {
-                showToast("点击屏幕播放");
-            });
+            loading.classList.remove('show');
+            const playPromise = video.play();
+            if (playPromise) {
+                playPromise.then(() => {
+                    hasStarted = true;
+                }).catch(() => {
+                    playCenter.classList.add('show');
+                });
+            }
         };
 
         video.onerror = function() {
+            loading.classList.remove('show');
             showToast("加载失败");
         };
     }
@@ -282,9 +369,9 @@
             return;
         }
 
-        historyIndex++;
         videoHistory.push(currentUrl);
-        if (videoHistory.length > 20) { videoHistory.shift(); historyIndex--; }
+        if (videoHistory.length > 30) { videoHistory.shift(); }
+        historyIndex = videoHistory.length - 1;
         loadVideo();
     }
 
@@ -301,9 +388,19 @@
             historyIndex--;
             const prevUrl = videoHistory[historyIndex];
             currentUrl = prevUrl;
+
+            loading.classList.add('show');
             video.src = prevUrl;
             video.load();
             updateFavButton();
+
+            video.onloadeddata = function() {
+                loading.classList.remove('show');
+                video.play().catch(() => {
+                    playCenter.classList.add('show');
+                });
+            };
+
             showToast("回到上一个");
         } else {
             showToast("已经是第一个了");
@@ -350,9 +447,12 @@
     // 手势逻辑
     let startY = 0;
     let startX = 0;
+    let touchStartTime = 0;
+
     document.addEventListener('touchstart', e => {
         startY = e.touches[0].clientY;
         startX = e.touches[0].clientX;
+        touchStartTime = Date.now();
     }, { passive: true });
 
     document.addEventListener('touchend', e => {
@@ -360,30 +460,47 @@
         const endX = e.changedTouches[0].clientX;
         const diffY = endY - startY;
         const diffX = endX - startX;
+        const touchDuration = Date.now() - touchStartTime;
 
-        // 垂直滑动
-        if (Math.abs(diffY) > 80 && Math.abs(diffY) > Math.abs(diffX)) {
-            if (diffY < -80) nextVideo(); // 上滑
-            else if (diffY > 80) prevVideo(); // 下滑
+        // 垂直滑动（上滑/下滑切视频）
+        if (Math.abs(diffY) > 60 && Math.abs(diffY) > Math.abs(diffX) && touchDuration < 500) {
+            if (diffY < -60) {
+                nextVideo(); // 上滑 = 下一个
+            } else if (diffY > 60) {
+                prevVideo(); // 下滑 = 上一个
+            }
+            return;
+        }
+
+        // 点击（轻触播放/暂停）
+        if (Math.abs(diffY) < 10 && Math.abs(diffX) < 10 && touchDuration < 200) {
+            if (video.paused) {
+                playCenter.classList.remove('show');
+                video.play().catch(() => {
+                    showToast("点击屏幕播放");
+                });
+            } else {
+                video.pause();
+                playCenter.classList.add('show');
+            }
         }
     });
 
-    // 点击视频暂停/播放
-    let lastTap = 0;
+    // 双击收藏
+    let lastTapTime = 0;
     video.addEventListener('click', () => {
         const now = Date.now();
-        if (now - lastTap < 300) {
-            // 双击收藏
+        if (now - lastTapTime < 300) {
             toggleFavorite();
-        } else {
-            // 单击暂停/播放
-            if (video.paused) {
-                video.play();
-            } else {
-                video.pause();
-            }
         }
-        lastTap = now;
+        lastTapTime = now;
+    });
+
+    // 视频播放结束自动下一个
+    video.addEventListener('ended', () => {
+        if (currentTab === 'recommend') {
+            nextVideo();
+        }
     });
 
     // 初始化
