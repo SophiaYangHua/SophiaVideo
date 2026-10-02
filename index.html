@@ -58,7 +58,13 @@
             background: #000;
         }
 
-        video { width: 100%; height: 100%; object-fit: cover; }
+        video { width: 100%; height: 100%; object-fit: cover; background: #000; }
+/* 禁用各浏览器原生控件 */
+video::-webkit-media-controls { display: none !important; }
+video::-webkit-media-controls-enclosure { display: none !important; }
+video::-webkit-media-controls-panel { display: none !important; }
+video::-webkit-media-controls-play-button { display: none !important; }
+video::-webkit-media-controls-start-playback-button { display: none !important; }
 
         /* 加载动画 */
         .loading {
@@ -177,7 +183,7 @@
 </div>
 
 <div id="player-container">
-    <video id="video-player" playsinline webkit-playsinline loop preload="auto"></video>
+    <video id="video-player" playsinline webkit-playsinline x5-playsinline x5-video-player-type="h5" x5-video-player-fullscreen="false" controlslist="nodownload noremoteplayback noplaybackrate nofullscreen" disablepictureinpicture loop preload="auto"></video>
 
     <!-- 加载动画 -->
     <div class="loading" id="loading"></div>
