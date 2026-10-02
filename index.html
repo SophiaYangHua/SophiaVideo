@@ -6,7 +6,7 @@
     <title>Sophia视频 - 随机推荐</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
 
         /* 顶部导航 */
         .nav-bar {
@@ -23,18 +23,18 @@
 
         .nav-item {
             color: rgba(255,255,255,0.6);
-            padding: 6px 18px;
+            padding: 6px 15px;
             font-size: 15px;
             white-space: nowrap;
             cursor: pointer;
-            border-radius: 18px;
+            border-radius: 15px;
             transition: all 0.3s;
             user-select: none;
         }
 
         .nav-item.active {
             color: #fff;
-            font-weight: 700;
+            font-weight: bold;
             font-size: 17px;
         }
 
@@ -56,82 +56,35 @@
             background: #000;
         }
 
-        video { width: 100%; height: 100%; object-fit: cover; background: #000; }
-
-        /* 加载动画 */
-        .loading {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 50px; height: 50px;
-            border: 3px solid rgba(255,255,255,0.2);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            z-index: 50;
-            display: none;
-        }
-        .loading.show { display: block; }
-
-        @keyframes spin {
-            to { transform: translate(-50%, -50%) rotate(360deg); }
-        }
+        video { width: 100%; height: 100%; object-fit: cover; }
 
         /* 右侧按钮 */
         .sidebar {
             position: absolute;
-            right: 12px;
-            bottom: 120px;
+            right: 10px;
+            bottom: 100px;
             display: flex;
             flex-direction: column;
-            gap: 22px;
+            gap: 20px;
             z-index: 100;
         }
 
         .action-btn {
-            width: 48px; height: 48px;
+            width: 45px; height: 45px;
             background: rgba(0, 0, 0, 0.4);
             border-radius: 50%;
             display: flex;
             justify-content: center;
             align-items: center;
             color: #fff;
-            font-size: 26px;
-            backdrop-filter: blur(4px);
-            border: 1px solid rgba(255,255,255,0.12);
+            font-size: 24px;
+            backdrop-filter: blur(2px);
+            border: 1px solid rgba(255,255,255,0.1);
             cursor: pointer;
             user-select: none;
-            transition: transform 0.15s;
         }
-        .action-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.2); }
-        .action-btn.favorited { color: #ff3b30; background: rgba(255, 59, 48, 0.15); border-color: rgba(255, 59, 48, 0.4); }
-
-        /* 底部信息条 */
-        .video-info {
-            position: absolute;
-            left: 15px;
-            right: 70px;
-            bottom: 80px;
-            z-index: 100;
-            color: #fff;
-            pointer-events: none;
-        }
-        .video-info .author {
-            font-size: 16px;
-            font-weight: 700;
-            margin-bottom: 6px;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-        }
-        .video-info .desc {
-            font-size: 13px;
-            opacity: 0.85;
-            line-height: 1.5;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
+        .action-btn:active { background: rgba(255,255,255,0.2); }
+        .action-btn.favorited { color: #ffd700; background: rgba(255, 215, 0, 0.2); border-color: #ffd700; }
 
         /* 提示框 */
         #toast {
@@ -140,7 +93,7 @@
             transform: translate(-50%, -50%);
             background: rgba(0,0,0,0.8);
             color: #fff;
-            padding: 14px 22px;
+            padding: 15px 25px;
             border-radius: 10px;
             opacity: 0;
             transition: opacity 0.3s;
@@ -176,22 +129,13 @@
 </div>
 
 <div id="player-container">
-    <video id="video-player" playsinline webkit-playsinline></video>
-
-    <!-- 加载动画 -->
-    <div class="loading" id="loading"></div>
+    <video id="video-player" playsinline webkit-playsinline loop muted></video>
 
     <!-- 空收藏提示 -->
     <div class="empty-fav" id="empty-fav">
         <div class="icon">☆</div>
         <div>还没有收藏哦</div>
         <div style="font-size:12px;margin-top:6px;opacity:0.7;">点击右侧 ★ 按钮收藏视频</div>
-    </div>
-
-    <!-- 底部视频信息 -->
-    <div class="video-info" id="video-info">
-        <div class="author" id="video-author">@Sophia视频</div>
-        <div class="desc" id="video-desc">随机推荐，上滑看下一个</div>
     </div>
 
     <!-- 右侧按钮 -->
@@ -214,17 +158,16 @@
     const video = document.getElementById('video-player');
     const toast = document.getElementById('toast');
     const favBtn = document.getElementById('fav-btn');
-    const loading = document.getElementById('loading');
     const emptyFav = document.getElementById('empty-fav');
-    const videoInfo = document.getElementById('video-info');
 
     let currentTab = 'recommend';
+    let currentBlob = null;
     let currentUrl = '';
     let currentSourceIndex = 0;
     let videoHistory = [];
     let historyIndex = -1;
     let favorites = [];
-    let favCurrentIndex = 0;
+    let favIndex = 0;
 
     // 从本地存储加载收藏
     try {
@@ -238,7 +181,7 @@
         } catch (e) {}
     }
 
-    // 切换标签
+    // 1. 切换标签
     function switchTab(tab, element) {
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
         element.classList.add('active');
@@ -252,96 +195,80 @@
                 video.pause();
                 video.src = '';
                 emptyFav.classList.add('show');
-                videoInfo.style.display = 'none';
-                favBtn.style.display = 'none';
             } else {
                 emptyFav.classList.remove('show');
-                videoInfo.style.display = 'block';
-                favBtn.style.display = 'flex';
-                favCurrentIndex = Math.floor(Math.random() * favorites.length);
-                loadFavoriteVideo(favCurrentIndex);
+                favIndex = Math.floor(Math.random() * favorites.length);
+                loadFavoriteVideo();
             }
         } else {
             emptyFav.classList.remove('show');
-            videoInfo.style.display = 'block';
-            favBtn.style.display = 'flex';
             loadVideo();
         }
     }
 
-    // 获取下一个 API 源（轮询）
-    function getNextApiSource() {
+    // 获取下一个 API 源
+    function getNextSource() {
         const url = API_SOURCES[currentSourceIndex];
         currentSourceIndex = (currentSourceIndex + 1) % API_SOURCES.length;
         return url;
     }
 
-    // 加载推荐视频
+    // 2. 加载推荐视频
     async function loadVideo() {
-        showLoading(true);
-        video.pause();
-        video.src = '';
-        video.load();
+        showToast("正在加载...");
 
-        const sourceUrl = getNextApiSource();
-        const url = `${sourceUrl}?t=${Date.now()}_${Math.random()}`;
-        currentUrl = url;
+        video.pause();
+        video.src = "";
+        video.load();
+        if (currentBlob) URL.revokeObjectURL(currentBlob);
+        currentBlob = null;
 
         try {
+            const sourceUrl = getNextSource();
+            const url = `${sourceUrl}?t=${new Date().getTime()}`;
+            currentUrl = url;
+
             const response = await fetch(url);
             if (!response.ok) throw new Error('网络错误');
 
             const blob = await response.blob();
-            if (blob.size < 1000) throw new Error('视频太小');
+            currentBlob = blob;
 
             const videoUrl = URL.createObjectURL(blob);
             video.src = videoUrl;
 
-            // 更新收藏按钮状态
             updateFavButton();
 
-            const playPromise = video.play();
-            if (playPromise) {
-                playPromise.catch(() => {
-                    showToast("点击屏幕播放");
-                });
-            }
-
-            video.onloadeddata = () => {
-                showLoading(false);
-            };
-
-            video.onerror = () => {
-                showLoading(false);
-                showToast("播放失败，换下一个");
-                setTimeout(() => nextVideo(), 800);
-            };
+            video.play().catch(() => {
+                showToast("点击屏幕播放");
+            });
 
         } catch (err) {
-            showLoading(false);
-            // 失败了就试下一个源
+            // 失败了自动试下一个源
             if (currentSourceIndex !== 0) {
-                showToast("换个源试试...");
                 loadVideo();
             } else {
-                showToast("加载失败，请重试");
+                showToast("加载失败");
             }
         }
     }
 
     // 加载收藏视频
-    function loadFavoriteVideo(index) {
+    function loadFavoriteVideo() {
         if (favorites.length === 0) {
             emptyFav.classList.add('show');
             return;
         }
 
-        showLoading(true);
-        video.pause();
-        video.src = '';
-        video.load();
+        showToast("正在加载...");
 
-        const url = favorites[index];
+        video.pause();
+        video.src = "";
+        video.load();
+        if (currentBlob) URL.revokeObjectURL(currentBlob);
+        currentBlob = null;
+
+        const url = favorites[favIndex];
         currentUrl = url;
 
         fetch(url)
@@ -350,94 +277,68 @@
                 return res.blob();
             })
             .then(blob => {
+                currentBlob = blob;
                 const videoUrl = URL.createObjectURL(blob);
                 video.src = videoUrl;
                 updateFavButton();
-                video.play().catch(() => {});
-                video.onloadeddata = () => showLoading(false);
-                video.onerror = () => {
-                    showLoading(false);
-                    nextFavVideo();
-                };
+                video.play().catch(() => {
+                    showToast("点击屏幕播放");
+                });
             })
             .catch(() => {
-                showLoading(false);
                 showToast("加载失败");
             });
     }
 
-    // 下一个视频
+    // 3. 下一个视频 (上滑)
     function nextVideo() {
         if (currentTab === 'favorite') {
-            nextFavVideo();
+            if (favorites.length === 0) return;
+            favIndex = (favIndex + 1) % favorites.length;
+            loadFavoriteVideo();
             return;
         }
 
-        historyIndex++;
-        videoHistory.push(currentUrl);
-        if (videoHistory.length > 20) {
-            videoHistory.shift();
-            historyIndex--;
+        if (currentBlob) {
+            historyIndex++;
+            videoHistory.push(currentBlob);
+            if (videoHistory.length > 10) { videoHistory.shift(); historyIndex--; }
         }
-
         loadVideo();
     }
 
-    // 下一个收藏视频
-    function nextFavVideo() {
-        if (favorites.length === 0) return;
-        favCurrentIndex = (favCurrentIndex + 1) % favorites.length;
-        loadFavoriteVideo(favCurrentIndex);
-    }
-
-    // 上一个视频
+    // 4. 上一个视频 (下滑)
     function prevVideo() {
         if (currentTab === 'favorite') {
             if (favorites.length === 0) return;
-            favCurrentIndex = (favCurrentIndex - 1 + favorites.length) % favorites.length;
-            loadFavoriteVideo(favCurrentIndex);
+            favIndex = (favIndex - 1 + favorites.length) % favorites.length;
+            loadFavoriteVideo();
             return;
         }
 
-        if (historyIndex > 0) {
+        if (historyIndex >= 0) {
+            const prevBlob = videoHistory[historyIndex];
             historyIndex--;
-            const prevUrl = videoHistory[historyIndex];
-            currentUrl = prevUrl;
-
-            showLoading(true);
-            video.pause();
-            video.src = '';
-
-            fetch(prevUrl)
-                .then(res => res.blob())
-                .then(blob => {
-                    video.src = URL.createObjectURL(blob);
-                    updateFavButton();
-                    video.play().catch(() => {});
-                    video.onloadeddata = () => showLoading(false);
-                })
-                .catch(() => {
-                    showLoading(false);
-                    showToast("加载失败");
-                });
-
+            if (currentBlob) URL.revokeObjectURL(currentBlob);
+            currentBlob = prevBlob;
+            video.src = URL.createObjectURL(prevBlob);
+            video.play();
+            updateFavButton();
             showToast("回到上一个");
         } else {
             showToast("已经是第一个了");
         }
     }
 
-    // 收藏/取消收藏
+    // 5. 收藏
     function toggleFavorite() {
         if (!currentUrl) return;
-
         const idx = favorites.indexOf(currentUrl);
         if (idx > -1) {
             favorites.splice(idx, 1);
             favBtn.classList.remove('favorited');
-            showToast("已取消收藏");
+            showToast("取消收藏");
 
-            // 如果在收藏页且删光了
             if (currentTab === 'favorite' && favorites.length === 0) {
                 video.pause();
                 video.src = '';
@@ -446,9 +347,8 @@
         } else {
             favorites.push(currentUrl);
             favBtn.classList.add('favorited');
-            showToast("收藏成功 ♥");
+            showToast("收藏成功");
         }
-
         saveFavorites();
     }
 
@@ -461,54 +361,34 @@
         }
     }
 
-    // 显示/隐藏加载
-    function showLoading(show) {
-        if (show) loading.classList.add('show');
-        else loading.classList.remove('show');
-    }
-
-    // 提示
-    let toastTimer = null;
     function showToast(msg) {
-        toast.textContent = msg;
+        toast.innerHTML = msg;
         toast.classList.add('show');
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => {
-            toast.classList.remove('show');
-        }, 1800);
+        setTimeout(() => { toast.classList.remove('show'); }, 2000);
     }
 
-    // 手势：上下滑切换视频
+    // 手势逻辑
     let startY = 0;
     let startX = 0;
-    let isDragging = false;
-
     document.addEventListener('touchstart', e => {
         startY = e.touches[0].clientY;
         startX = e.touches[0].clientX;
-        isDragging = true;
     }, { passive: true });
 
     document.addEventListener('touchend', e => {
-        if (!isDragging) return;
-        isDragging = false;
-
         const endY = e.changedTouches[0].clientY;
         const endX = e.changedTouches[0].clientX;
         const diffY = endY - startY;
         const diffX = endX - startX;
 
-        // 垂直滑动距离大于 60px 且大于水平距离
-        if (Math.abs(diffY) > 60 && Math.abs(diffY) > Math.abs(diffX)) {
-            if (diffY < 0) {
-                nextVideo(); // 上滑 = 下一个
-            } else {
-                prevVideo(); // 下滑 = 上一个
-            }
+        // 垂直滑动
+        if (Math.abs(diffY) > 80 && Math.abs(diffY) > Math.abs(diffX)) {
+            if (diffY < -80) nextVideo(); // 上滑
+            else if (diffY > 80) prevVideo(); // 下滑
         }
     });
 
-    // 点击视频区域暂停/播放
+    // 点击视频暂停/播放
     let lastTap = 0;
     video.addEventListener('click', () => {
         const now = Date.now();
@@ -524,11 +404,6 @@
             }
         }
         lastTap = now;
-    });
-
-    // 视频播放结束自动下一个
-    video.addEventListener('ended', () => {
-        nextVideo();
     });
 
     // 初始化
